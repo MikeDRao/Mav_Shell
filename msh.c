@@ -19,7 +19,7 @@
 
 #define MAX_COMMAND_SIZE 255    //The Max command-line size
 
-#define MAX_NUM_ARGUMENTS 10	//Mav shell only supports five arguments 
+#define MAX_NUM_ARGUMENTS 11	//Mav shell only supports 10 arguments 
 
 #define MAX_NUM_HIST 15			//max number of history commands 
 
@@ -29,14 +29,19 @@ int main()
 {
 	pid_t * pid_hist = (pid_t*)malloc(MAX_NUM_PIDS);
 
-	char cmd_hist[MAX_NUM_HIST][MAX_COMMAND_SIZE];
-	int hist_count = 0;
+	char *cmd_hist[MAX_NUM_HIST];
 	int hist_index = 0;
 
 	int pid_count = 0;
 	int pid_cr_index = 0;
 
 	int iter;
+	for (iter = 0; iter < MAX_NUM_HIST; iter++)
+	{
+		cmd_hist[iter] = (char*)malloc(1024);
+		memset(cmd_hist[iter], 0, 1024);
+	}
+
 	for (iter = 0; iter < MAX_NUM_PIDS; iter++)
 	{
 		pid_hist[iter] = 0;
@@ -45,7 +50,7 @@ int main()
 	while(1)
 	{
 		char * cmd_str = (char*)malloc(MAX_COMMAND_SIZE);
-		memset(cmd_str, 0, MAX_COMMAND_SIZE);
+		memset(cmd_str, 0, 1024);
 		//print out the msh prompt
 		printf("msh> ");
 		//read the command from the commandline 
@@ -54,15 +59,13 @@ int main()
 		//inputs something since fgets returns NULL when there 
 		//there is no input
 		while(!fgets(cmd_str,MAX_COMMAND_SIZE,stdin));
-		//********NOT WORKING***************** never enters loop 
-
+		//catch history index that user wants to execute
 		if (!strncmp(&cmd_str[0], "!",1))
 		{
 			int temp = atoi(&cmd_str[1]);
 			strcpy(cmd_str, cmd_hist[temp]);
-			printf("%d\n", temp);
 		}
-		
+
 		/* parse input */
 		char *token[MAX_NUM_ARGUMENTS];
 		int token_count = 0;
@@ -71,16 +74,25 @@ int main()
 		char *arg_ptr;
 
 		char *working_str = strdup(cmd_str);
-		memset(cmd_hist[hist_index], 0, MAX_COMMAND_SIZE);
-		strncpy(cmd_hist[hist_index],working_str,strlen(working_str));  //recent change to strncpy
-		hist_count++;
-		hist_index++;
+		//shift the array of commands to store new command and get rid of oldest
 		if (hist_index >= MAX_NUM_HIST)
 		{
-			hist_index = 0;
+			int i;
+			for ( i = 0; i < MAX_NUM_HIST - 1; i++)
+			{
+				memset(cmd_hist[i], 0, 1024);
+				strncpy(cmd_hist[i], cmd_hist[i+1], strlen(cmd_hist[i + 1]));
+			}
+			memset(cmd_hist[MAX_NUM_HIST-1], 0, 1024);
+			strncpy(cmd_hist[MAX_NUM_HIST-1], cmd_str, strlen(cmd_str));
 		}
-		free(cmd_str);
-		//we are going to move the working_str pointer so
+		else
+		{
+			memset(cmd_hist[hist_index], 0, 1024);
+			strncpy(cmd_hist[hist_index], cmd_str, strlen(cmd_str));
+		}
+		hist_index++;
+
 		//keep track of its original value so we can deallocate 
 		//the correct amount at the end
 		char *working_root = working_str;
@@ -101,11 +113,10 @@ int main()
 			continue;
 		}
 		//if exit or quit is input 
-		//msh will break from while loop after freeing mem
+		//msh will break from while loop then freeing mem
 		//inorder to exit with status 0
 		if (!strcmp(token[0], "exit") || !strcmp(token[0], "quit"))
 		{
-			printf("exiting....\n");
 			break;
 		}
 		//if cd is input msh will process this by using the chdir() function
@@ -145,6 +156,7 @@ int main()
 				}
 			}	
 		}
+		// Catch history as a parameter to display previous commands
 		else if (!strcmp(token[0], "history"))
 		{
 			if (cmd_hist == NULL)
@@ -153,20 +165,17 @@ int main()
 			}
 			else
 			{
+				//iterate through command history array and display from most
+				//recent to oldest command
 				int cmd_index;
-				if (hist_count >= MAX_NUM_HIST)
+				if (hist_index >= MAX_NUM_HIST)
 				{
 					for (cmd_index = 0; cmd_index < MAX_NUM_HIST; cmd_index++)
 					{
-						hist_index++;
-						printf("%d. %s", cmd_index, cmd_hist[hist_index]);
-						if (hist_index >= MAX_NUM_HIST)
-						{
-							hist_index = 0;
-						}
+						printf("%d. %s", cmd_index, cmd_hist[cmd_index]);
 					}
-					//hist_index++;
 				}
+				//if command history is not full only dipslay commands that have been stored
 				else
 				{
 					for (cmd_index = 0; cmd_index < hist_index; cmd_index++)
@@ -194,7 +203,7 @@ int main()
 				int ret = execvp(token[0], token);
 				if (ret == -1)
 				{
-					printf("%s: Command not supported\n",token[0]);
+					printf("%s: Command not found\n",token[0]);
 				}
 				return 0; //*** to prevent fork bombing ***
 			}
